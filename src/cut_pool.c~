@@ -1,0 +1,1042 @@
+/* GOAL PSP Solver II
+ * Multi-Mode Resource-Constrained Multi-Project Scheduling Problem (MRCMPSP)
+ *
+ * Develop as part of the D.Sc. thesis of Soares, Janniele A., with collaboration
+ *                                   of Santos, H.G., Toffolo, T. and Baltar, D.
+ */
+
+#include <stdlib.h>
+#include <stdio.h>
+#include <assert.h>
+#include <string.h>
+#include <limits.h>
+#include <omp.h>
+#include <time.h>
+#include "lp.h"
+#include "cut_pool.h"
+#include "parameters.h"
+#include "cut_cg.h"
+#include "cut_clique.h"
+#include "cut_cover.h"
+#include "cut_precedence.h"
+#include "cut_gpu.h"
+#include "solutionGpu.h"
+#include "prepareGpu.h"
+
+
+#define VERBOSE 2
+
+static const unsigned int hashval[] = { 11, 269, 3, 7, 31, 37, 131, 13, 17, 647, 653, 89, 97, 101, 39, 149, 151, 157, 821, 257, 263, 389, 397, 457, 461, 463, 331, 337, 347, 1453, 1459, 1471, 1481, 1483, 1487, 1489, 1493, 1499, 1511, 9, 53, 59  };
+
+static const unsigned int nHashvalues = sizeof(hashval)/sizeof(int);
+
+int parseName( const char *name, char *prefix, int *idx )
+{
+#define MAX_COMMAS 64
+    int nCommas=0;
+    int commaPos[MAX_COMMAS];
+    //open and close  ()
+    int pO=-1, pC=-1;
+    int l = strlen(name);
+    int i;
+    for ( i=0 ; (i<l) ; ++i )
+        switch (name[i]) {
+            case '(' :
+                pO = i;
+                break;
+            case ')' :
+                pC = i;
+                break;
+            case ',' :
+                commaPos[nCommas++] = i;
+                break;
+        }
+
+    //not in the propper format
+    if ( (pO==-1) || (pC==-1) )
+        return 0;
+
+    assert( pO<pC );
+
+    strcpy( prefix, name );
+
+    //printf("%s\n", name );
+
+    prefix[pO] = '\0';
+
+    char str[STR_SIZE];
+
+    for ( i=0 ; (i<nCommas+1) ; ++i ) {
+        int pStart = pO;
+        if (i>=1)
+            pStart = commaPos[i-1];
+
+        int pEnd   = pC;
+        if (i<nCommas)
+            pEnd = commaPos[i];
+
+
+        //printf("X%d %d %d\n", pStart, pEnd, i);
+        assert( pStart<pEnd );
+
+        strcpy( str, name+pStart+1 );
+        str[pEnd-pStart-1] = '\0';
+        idx[i] = atoi(str);
+    }
+
+    return nCommas+1;
+#undef MAX_COMMAS
+}
+
+int hash_code_vint( int n, const int *v, int hashSize )
+{
+    size_t code = 0;
+    int i;
+    for ( i=0 ; i<n ; ++i )
+        code += ((size_t)v[i])*hashval[i%nHashvalues];
+
+    int res = (code % ((size_t)INT_MAX));
+    res = res % hashSize;
+
+    assert( res>=0 && res<hashSize );
+
+    return res;
+}
+
+struct _CutPool {
+
+    VecDbl  **hashCuts;
+    int nHash;
+
+    LinearProgram *mip;
+
+    const Instance* inst;
+};
+
+CutPool *CutP_create( const Instance *inst, LinearProgram *mip)
+{
+    CutPool *cutP;
+    ALLOCATE_INI( cutP, CutPool );
+    cutP->nHash = lp_cols(mip);
+    cutP->inst = inst;
+
+    VecDbl  **hashCuts;
+    ALLOCATE_VECTOR( hashCuts, VecDbl*, cutP->nHash  );
+    for ( int i=0; (i<cutP->nHash) ; ++i )
+        hashCuts[i] = VDbl_create();
+    cutP->hashCuts = hashCuts;
+    cutP->mip = mip;
+    return cutP;
+}
+
+IntDblPair cutP_findElement( CutPool *cutP, int key, int c, const int *idx, const double *coe, double rhs, int sense, int lp_cols, int type)
+{
+
+
+    IntDblPair posrow;
+    assert(key < lp_cols);
+    assert(key >= 0);
+
+    int size = VDbl_size(cutP->hashCuts[key]);
+    int idRow = 0, idType = 1, idRhs = 2, idSense =3, idNElem = 4, init = 0, end = 0, endcoef = 0;
+    double ty = 0.0, nElemCut = 0.0, nrhs = 0.0, nsense = 0.0;//, row = 0;
+    //sense: 0 = L, 1 = E, 2 = G
+    // printf("0) > size %d, idRow %d, idType %d, idRhs %d, idSense %d, idNElem %d, ty %f, nrhs %f, nsesne %f, nelemcut %f, type %d, rhs %f, sense %d, c %d, init %d, end %d, endcoef %d \n", size,idRow, idType, idRhs, idSense, idNElem, ty, nrhs, nsense,  nElemCut, type, rhs, sense, c, init, end, endcoef);
+    if(size > 0) {
+        //   row = VInt_get(cutP->hashCuts[key], idRow);
+        ty = VDbl_get(cutP->hashCuts[key], idType);
+        nrhs = VDbl_get(cutP->hashCuts[key], idRhs);
+        nsense = VDbl_get(cutP->hashCuts[key], idSense);
+        nElemCut = VDbl_get(cutP->hashCuts[key], idNElem);
+        init = idNElem+1;
+        end = init+nElemCut-1;
+        endcoef = end+nElemCut;
+
+        //   printf("1) > size %d, idRow %d, idType %d, idRhs %d, idSense %d, idNElem %d, ty %f, nrhs %f, nsesne %f, type %d, rhs %f, sense %d, nelemcut %f, init %d, end %d, endcoef %d \n", size,idRow, idType, idRhs, idSense, idNElem, ty, nrhs, nsense, type, rhs, sense, nElemCut, init, end, endcoef);
+    }
+
+
+    int ih = init;
+    int ihcoef = end+1;
+    // printf("2) ih %d ihcoef %d c %d \n", ih, ihcoef, c);
+
+    //  printf("\n3) Verify on key %d with size %d: \n if the cut exists: ", key, c);
+    //  for(int ihce = 0 ; ihce < c ; ihce++)
+    //      printf(" %f * %d ",coe[ihce], idx[ihce]);
+    // printf("\n");
+    // getchar();
+    while( ih < size ) {
+        //    printf("4) ih %d < size : c %d <> nElemCut %f . type %d != ty %f . sense %d != nsense %f . rhs %f != nrhs %f. \n", ih,c, nElemCut, type, ty, sense, nsense, rhs, nrhs);
+        while( ( nElemCut < c) || (nElemCut > c) || (type != ty) || (sense != nsense ) || (rhs != nrhs)) {
+            idNElem = endcoef+5;
+            idSense = endcoef+4;
+            idRhs = endcoef+3;
+            idType = endcoef+2;
+            idRow = endcoef+1;
+            if(idNElem>=size) {
+                posrow.a = idRow;
+                posrow.b = 0;
+                //     printf("5) idNElem %d >=size %d ih %d, init %d, ihcoef %d, nElemCut %f, end %d, endcoef %d, idRow %d\n ", idNElem, size, ih, init, ihcoef, nElemCut, end, endcoef, idRow);
+                return posrow;
+            }
+            nElemCut = VDbl_get(cutP->hashCuts[key], idNElem);
+            ty = VDbl_get(cutP->hashCuts[key], idType);
+            nrhs = VDbl_get(cutP->hashCuts[key], idRhs);
+            nsense = VDbl_get(cutP->hashCuts[key], idSense);
+            init = idNElem+1;
+            end = init+nElemCut-1;
+            endcoef = end+nElemCut;
+            ih = init;
+            ihcoef = end+1;
+            //      printf("6) idNElem %d still < size and <> %d ih %d, init %d, ihcoef %d, nElemCut %f, end %d, endcoef %d, idRow %d\n ", idNElem, size, ih, init, ihcoef, nElemCut, end, endcoef, idRow);
+        }
+        //   printf("7) idNElem %d still < size and == %d ih %d, init %d, ihcoef %d, nElemCut %f, end %d, endcoef %d, idRow %d\n ", idNElem, size, ih, init, ihcoef, nElemCut, end, endcoef, idRow);
+        //   getchar();
+        int e, aux = 0;
+        //  printf("8) nElemCut %f \n ", nElemCut);
+        for( e = 0 ; e < nElemCut ; e++ ) {
+            if(idx[e] != VDbl_get(cutP->hashCuts[key],ih) || coe[e] != VDbl_get(cutP->hashCuts[key],ihcoef) ) {
+                //          printf("!= idx[%d] %d != VDbl_get(cutP->hashCuts[%d],%d) %f || coe[%d] %f != VDbl_get(cutP->hashCuts[%d],%d) %f \n", e, idx[e],key, ih, VDbl_get(cutP->hashCuts[key],ih), e, coe[e], key, ihcoef, VDbl_get(cutP->hashCuts[key],ihcoef) );
+                aux = 0;
+                break;
+            }
+            //    printf("== idx[%d] %d != VDbl_get(cutP->hashCuts[%d],%d) %f || coe[%d] %f != VDbl_get(cutP->hashCuts[%d],%d) %f \n", e, idx[e],key, ih, VDbl_get(cutP->hashCuts[key],ih), e, coe[e], key, ihcoef, VDbl_get(cutP->hashCuts[key],ihcoef) );
+            ih++;
+            ihcoef++;
+            aux = 1;
+        }
+        if(aux) {
+            double actv = VDbl_get(cutP->hashCuts[key],idRow); //new
+            //   printf("actv %f------\n", actv);
+            if(actv==-1) {
+                posrow.a = idRow;
+                posrow.b = -1;
+                //    printf("7) ACTV new idNElem %d >=size %d ih %d, init %d, ihcoef %d, nElemCut %f, end %d, endcoef %d, idRow %d\n ", idNElem, size, ih, init, ihcoef, nElemCut, end, endcoef, idRow);
+                return  posrow;
+            }
+            posrow.a = idRow;
+            posrow.b = 1;
+            //  printf("8) Repeated new idNElem %d >=size %d ih %d, init %d, ihcoef %d, nElemCut %f, end %d, endcoef %d, idRow %d\n ", idNElem, size, ih, init, ihcoef, nElemCut, end, endcoef, idRow);
+            return posrow;
+        }
+
+        idNElem = endcoef+5;
+        idSense = endcoef+4;
+        idRhs = endcoef+3;
+        idType = endcoef+2;
+        idRow = endcoef+1;
+        if(idNElem>=size) {
+            posrow.a = idRow;
+            posrow.b = 0;
+            //   printf("9) new idNElem %d >=size %d ih %d, init %d, ihcoef %d, nElemCut %f, end %d, endcoef %d, idRow %d\n ", idNElem, size, ih, init, ihcoef, nElemCut, end, endcoef, idRow);
+            return posrow;
+        }
+        nElemCut = VDbl_get(cutP->hashCuts[key],idNElem);
+        ty = VDbl_get(cutP->hashCuts[key], idType);
+        nrhs = VDbl_get(cutP->hashCuts[key], idRhs);
+        nsense = VDbl_get(cutP->hashCuts[key], idSense);
+        init = idNElem+1;
+        end = init+nElemCut-1;
+        endcoef = end+nElemCut;
+        ih = init;
+        ihcoef = end+1;
+    }
+
+    posrow.a = 0;
+    posrow.b = 0;
+
+    //  printf("10) posrow.a %d, posrow.b %f\n ", posrow.a, posrow.b);
+
+    return posrow;
+}
+
+IntDblPair CutP_compElemRepeatedCoef( CutPool *cutP, int key, int c, const int* idx, const double* coe, double rhs, int sense, int lp_cols, int lp_rows, int type) // cutPool
+{
+
+    assert(key < lp_cols);
+    assert(key >= 0);
+
+    IntDblPair posrow = cutP_findElement(cutP,key,c,idx,coe,rhs,sense,lp_cols,type);
+
+    if(posrow.b==0) {
+        VDbl_pushBack(cutP->hashCuts[key], -1);
+        posrow.a = VDbl_size(cutP->hashCuts[key])-1;
+        //    printf("\n ultimo element %f ,size %d, row : %d \n adding cut to cut pool: \n", VDbl_get(cutP->hashCuts[key], posrow.a), c, posrow.a  );
+        VDbl_pushBack(cutP->hashCuts[key],type);
+        VDbl_pushBack(cutP->hashCuts[key],rhs);
+        VDbl_pushBack(cutP->hashCuts[key],sense);
+        VDbl_pushBack(cutP->hashCuts[key],c);
+        for(int ihce = 0 ; ihce < c ; ihce++) {
+            VDbl_pushBack(cutP->hashCuts[key],idx[ihce]);
+            //        printf(" %d ", idx[ihce]);
+        }
+        for(int ihce = 0 ; ihce < c ; ihce++) {
+            VDbl_pushBack(cutP->hashCuts[key],coe[ihce]);
+            //         printf(" %f", coe[ihce]);
+        }
+        //   printf("\n");
+
+        //        getchar();
+        return posrow;
+    }
+
+    //    getchar();
+    return posrow;
+
+}
+
+void CutP_printHash( CutPool *cutP, LinearProgram* lp)
+{
+
+    const double *xf = lp_x(lp);
+    int nColsLP = lp_cols(lp);
+
+    int idxR = 0, idxTC = 1, idxRhs = 2, idxSense = 3, idxSC = 4;
+    double r = 0, tc = 0, sc = 0, nrhs = 0, nsense=0; //row, cut, size cut
+    int init = 0, initcoef = 0, end = 0, endcoef = 0;
+
+    //    printf("\n\n Start \n\n");
+    for(int n = 0 ; n < cutP->nHash ; n++) {
+
+        int s = VDbl_size(cutP->hashCuts[n]); //size hash
+        if(s == 0) continue;
+        r = VDbl_get(cutP->hashCuts[n], idxR);
+        tc = VDbl_get(cutP->hashCuts[n], idxTC);
+        nrhs = VDbl_get(cutP->hashCuts[n], idxRhs);
+        nsense = VDbl_get(cutP->hashCuts[n], idxSense);
+        sc = VDbl_get(cutP->hashCuts[n], idxSC);
+        init = idxSC+1;
+        end = init+sc-1;
+        initcoef = end+1;
+        endcoef = end+sc;
+        printf("\nKey: %d Size: %d \n", n, s);
+
+        // printf("1) idxR %d, r %f, idxTC %d, tc %f, idxRhs %d, nrhs %f, idxSense %d,  nsense %f, idxSC %d, sc %f, init %d, initcoef %d, end %d, endcoef %d, s %d \n", idxR, r, idxTC, tc, idxRhs, nrhs, idxSense, nsense, idxSC, sc, init, initcoef, end, endcoef, s);
+
+        int *idx;
+        double *coef;
+        ALLOCATE_VECTOR(idx, int, nColsLP);
+        ALLOCATE_VECTOR(coef, double, nColsLP);
+
+        int o = 0;
+        double value = 0;
+
+        int ihcoef = initcoef;
+        for(int ihce = init ; ihce < init+sc && ihcoef < initcoef+sc && ihcoef < s; ihce++, ihcoef++) {
+            // printf("\nihce %d == init %d +sc %f -1 && ihcoef %d == initcoef %d +sc %f -1 %d \n", ihce, init, sc, ihcoef,initcoef,sc);
+
+            int elem = VDbl_get(cutP->hashCuts[n],ihce);
+            double coefs = VDbl_get(cutP->hashCuts[n],ihcoef);
+
+            value += (xf[elem]*coefs);
+            idx[o] = elem;
+            coef[o] = coefs;
+            printf(" %f * %d ,", coefs, elem);
+            o++;
+            if(ihce == init+sc-1 && ihcoef == initcoef+sc-1) {
+                /*if(sc == 1){
+                   printf(" somente 1 nElem %f, sense %f, rhs %f\n", sc, nsense, nrhs );
+                                getchar();
+                }*/
+                printf("nElem %f, sense %f, rhs %f r(activated) %f\n", sc, nsense, nrhs, r );
+                o = 0;
+                value = 0;
+                if(ihcoef+1 == s) {
+                    idxR = 0;
+                    idxTC = 1;
+                    idxRhs = 2;
+                    idxSense = 3;
+                    idxSC = 4;
+                    init = idxSC+1;
+                    end = init+sc-1;
+                    initcoef = end+1;
+                    endcoef = end+sc;
+                    break;
+                }
+                idxR = ihcoef+1;
+                idxTC = ihcoef+2;
+                idxRhs = ihcoef+3;
+                idxSense = ihcoef+4;
+                idxSC = ihcoef+5;
+                r = VDbl_get(cutP->hashCuts[n], idxR);
+                tc = VDbl_get(cutP->hashCuts[n], idxTC);
+                nrhs = VDbl_get(cutP->hashCuts[n], idxRhs);
+                nsense = VDbl_get(cutP->hashCuts[n], idxSense);
+                sc = VDbl_get(cutP->hashCuts[n], idxSC);
+                init = idxSC+1;
+                end = init+sc-1;
+                initcoef = end+1;
+                endcoef = end+sc;
+                ihce = init;
+                ihcoef = initcoef;
+            }
+        }
+        free(coef);
+        free(idx);
+    }
+
+
+}
+
+void CutP_addCut( CutPool *cutP, LinearProgram* lp, int continuous, double maxslack, int nround)
+{
+
+    const double *xf = lp_x(lp);
+    int nColsLP = lp_cols(lp);
+
+    int idxR = 0, idxTC = 1, idxRhs = 2, idxSense = 3, idxSC = 4;
+    double r = 0.0, tc = 0.0, nrhs = 0.0, nsense = 0.0, sc = 0.0; //row, cut, size cut
+    int init = 0, initcoef = 0, end = 0, endcoef = 0;
+    //    char prefix[STR_SIZE];
+    //  int nJobs = Inst_nJobs(cutP->inst);
+    //    int ix[nJobs];
+    //    char namecol[STR_SIZE];
+
+    int cont=0;
+    for(int n = 0 ; n < cutP->nHash ; n++) {
+
+        int s = VDbl_size(cutP->hashCuts[n]); //size hash
+        if(s == 0) continue;
+
+        r = VDbl_get(cutP->hashCuts[n], idxR);
+        tc = VDbl_get(cutP->hashCuts[n], idxTC);
+        nrhs = VDbl_get(cutP->hashCuts[n], idxRhs);
+        nsense = VDbl_get(cutP->hashCuts[n], idxSense);
+        sc = VDbl_get(cutP->hashCuts[n], idxSC);
+        init = idxSC+1;
+        end = init+sc-1;
+        initcoef = end+1;
+        endcoef = end+sc;
+        //  if(r==-1) printf("\nKey: %d Size: %d \n", n, s);
+        //  if(r==-1) printf("1) idxR %d, r %f, idxTC %d, tc %f, idxRhs %d, nrhs %f, idxSense %d,  nsense %f, idxSC %d, sc %f, init %d, initcoef %d, end %d, endcoef %d, s %d \n", idxR, r, idxTC, tc, idxRhs, nrhs, idxSense, nsense, idxSC, sc, init, initcoef, end, endcoef, s);
+
+        int endline = 0;
+        while( r != -1) {
+            // printf("\nr == 1\n");
+            idxSC = endcoef+5;
+            idxSense = endcoef+4;
+            idxRhs = endcoef+3;
+            idxTC = endcoef+2;
+            idxR = endcoef+1;
+            if(idxR >= s) {
+                idxR = 0;
+                idxTC = 1;
+                idxRhs = 2;
+                idxSense = 3;
+                idxSC = 4;
+                init = idxSC+1;
+                end = init+sc-1;
+                initcoef = end+1;
+                endcoef = end+sc;
+                endline=1;
+                break;
+            } else {
+                r = VDbl_get(cutP->hashCuts[n], idxR);
+                tc = VDbl_get(cutP->hashCuts[n], idxTC);
+                nrhs = VDbl_get(cutP->hashCuts[n], idxRhs);
+                nsense = VDbl_get(cutP->hashCuts[n], idxSense);
+                sc = VDbl_get(cutP->hashCuts[n], idxSC);
+                init = idxSC+1;
+                end = init+sc-1;
+                initcoef = end+1;
+                endcoef = end+sc;
+                //    printf("3) idxR %d, r %f, idxTC %d, tc %f, idxRhs %d, nrhs %f, idxSense %d, nsense %f, idxSC %d, sc %f,  init %d, initcoef %d, end %d endcoef %d\n", idxR, r, idxTC, tc, idxRhs, nrhs, idxSense, nsense,idxSC, sc, init, initcoef, end, endcoef);
+            }
+        }
+
+        if(endline) continue;
+
+        int *idx;
+        double *coef;
+        ALLOCATE_VECTOR(idx, int, nColsLP);
+        ALLOCATE_VECTOR(coef, double, nColsLP);
+
+        int o = 0;
+        double value = 0;
+
+        int ihcoef = initcoef;
+        for(int ihce = init ; ihce < init+sc && ihcoef < initcoef+sc && ihcoef < s; ihce++, ihcoef++) {
+            //   printf("\n ihce %d == init %d +sc %f -1 && ihcoef %d == initcoef %d +sc %f -1\n", ihce, init, sc, ihcoef,initcoef,sc);
+
+            int elem = VDbl_get(cutP->hashCuts[n],ihce);
+            double coefs = VDbl_get(cutP->hashCuts[n],ihcoef);
+
+            value += (xf[elem]*coefs);
+            idx[o] = elem;
+            coef[o] = coefs;
+            //  if(r==-1)
+            //      printf(" %f * %d ,", coefs, elem);
+            //  fflush(stdout);
+            o++;
+            if(ihce == init+sc-1 && ihcoef == initcoef+sc-1) {
+                //    if(r==-1) printf(" nElem %f, sense %f, rhs %f\n", sc, nsense, nrhs );
+                //   printf(" -- \n\n");
+                char name[STR_SIZE];
+                end = ihce;
+                endcoef = ihcoef;
+
+                double slack = fabs(nrhs-value);
+                if(slack < maxslack) {
+
+                    char sens = (nsense== 0 ? 'L' : (nsense == 1 ? 'E' : 'G'));
+
+
+
+                    if(tc==LPC_PREC)
+                        sprintf( name, "cutPrec#%d_%d", lp_rows(lp)+1, nround);
+                    if(tc== LPC_CLIQUE)
+                        sprintf( name, "cutClique#%d_%d", lp_rows(lp)+1, nround );
+                    if(tc== LPC_RR)
+                        sprintf( name, "cutRR#%d_%d", lp_rows(lp)+1, nround);
+                    if(tc== LPC_CG)
+                        sprintf( name, "cutCG#%d_%d", lp_rows(lp)+1, nround );
+
+                    if(continuous)
+                        lp_add_row(  lp, sc, idx, coef, name, sens, nrhs );
+                    else
+                        lp_add_cut( lp, sc, idx, coef, name, sens, nrhs );
+                    VDbl_set(cutP->hashCuts[n],idxR,1);
+                    cont++;
+                    //   printf("Add slack %f, maxslack %f\n", slack, maxslack);
+
+                    //    printf("n %d, idxR %d, 1\n", n,idxR);
+                }
+
+
+                CLEAR_VECTOR(idx,int,nColsLP);
+                CLEAR_VECTOR(coef,int,nColsLP);
+
+                o = 0;
+                value = 0;
+                if(endcoef+1 == s) {
+                    idxR = 0;
+                    idxTC = 1;
+                    idxRhs = 2;
+                    idxSense = 3;
+                    idxSC = 4;
+                    init = idxSC+1;
+                    end = init+sc-1;
+                    initcoef = end+1;
+                    endcoef = end+sc;
+                    endline=1;
+                    ihcoef = initcoef;
+                    ihce = init;
+                    break;
+                }
+
+
+                idxR = endcoef+1;
+                idxTC = endcoef+2;
+                idxRhs = endcoef+3;
+                idxSense = endcoef+4;
+                idxSC = endcoef+5;
+                r = VDbl_get(cutP->hashCuts[n], idxR);
+                tc = VDbl_get(cutP->hashCuts[n], idxTC);
+                nrhs = VDbl_get(cutP->hashCuts[n], idxRhs);
+                nsense = VDbl_get(cutP->hashCuts[n], idxSense);
+                sc = VDbl_get(cutP->hashCuts[n], idxSC);
+                init = idxSC+1;
+                end = init+sc-1;
+                initcoef = end+1;
+                endcoef = end+sc;
+                ihce = init;
+                ihcoef = initcoef;
+                // printf("6.1) idxR %d, r %f, idxTC %d, tc %f, idxRhs %d, nrhs %f, idxSense %d, nsense %f, idxSC %d, sc %f, init %d, ihce %d, initcoef %d, ihcoef %d, end %d endcoef %d\n", idxR, r, idxTC, tc, idxRhs, nrhs, idxSense, nsense,idxSC, sc, init, ihce, initcoef, ihcoef, end, endcoef);
+
+                while( r != -1) {
+                    //     printf("\nSec r == 1\n");
+                    idxSC = endcoef+5;
+                    idxSense = endcoef+4;
+                    idxRhs = endcoef+3;
+                    idxTC = endcoef+2;
+                    idxR = endcoef+1;
+                    if(idxR >= s) {
+                        //      printf("\nendline\n");
+                        idxR = 0;
+                        idxTC = 1;
+                        idxRhs = 2;
+                        idxSense = 3;
+                        idxSC = 4;
+                        r = 0.0;
+                        tc = 0.0;
+                        nrhs = 0.0;
+                        nsense = 0.0;
+                        sc = 0.0;
+                        init = idxSC+1;
+                        end = init+sc-1;
+                        initcoef = end+1;
+                        endcoef = end+sc;
+                        ihcoef = initcoef;
+                        ihce = init;
+                        endline=1;
+                        //    printf("7) idxR %d, r %f, idxTC %d, tc %f, idxRhs %d, nrhs %f, idxSense %d, nsense %f, idxSC %d, sc %f,  init %d, initcoef %d, end %d endcoef %d\n", idxR, r, idxTC, tc, idxRhs, nrhs, idxSense, nsense,idxSC, sc, init, initcoef, end, endcoef);
+                        break;
+                    } else {
+                        r = VDbl_get(cutP->hashCuts[n], idxR);
+                        tc = VDbl_get(cutP->hashCuts[n], idxTC);
+                        nrhs = VDbl_get(cutP->hashCuts[n], idxRhs);
+                        nsense = VDbl_get(cutP->hashCuts[n], idxSense);
+                        sc = VDbl_get(cutP->hashCuts[n], idxSC);
+                        init = idxSC+1;
+                        end = init+sc-1;
+                        initcoef = end+1;
+                        endcoef = end+sc;
+                        ihcoef = initcoef;
+                        ihce = init;
+                        //    printf("8) idxR %d, r %f, idxTC %d, tc %f, idxRhs %d, nrhs %f, idxSense %d, nsense %f, idxSC %d, sc %f,  init %d, initcoef %d, end %d endcoef %d\n", idxR, r, idxTC, tc, idxRhs, nrhs, idxSense, nsense,idxSC, sc, init, initcoef, end, endcoef);
+                    }
+                }
+
+                // getchar();
+                ihcoef = initcoef-1;
+                ihce = init-1;
+                if(endline) break;
+            }
+        }
+        free(coef);
+        free(idx);
+    }
+    if(VERBOSE==2)  printf("\nnumbers of rows added %d, lp_rows after add cuts %d. \n", cont, lp_rows(lp));
+}
+
+void CutP_removeCut( CutPool *cutP, LinearProgram* lp,  double maxslack)
+{
+    double removecuttime = omp_get_wtime();
+    double findSlack = 0;
+    double findElem = 0;
+    double findRow = 0;
+
+    //    const double *xf = lp_x(lp);
+    int nColsLP = lp_cols(lp);
+    int nRows = lp_rows(lp);
+    int *rowstoremove;
+    ALLOCATE_VECTOR(rowstoremove, int, nRows);
+    int cont = 0 ;
+
+    double tt = omp_get_wtime();
+    double *slacks = lp_row_slack(lp);
+    findSlack +=  (omp_get_wtime()-tt);
+    //  printf("\nnRows %d: ", nRows);
+    for(int n = 0 ; n < nRows ; n++) {
+
+        int aux = 0;
+
+        //  printf("\nSlack %f < maxslack %f ", slacks[n], maxslack);
+        if( slacks[n] < maxslack) continue;
+
+        char name[STR_SIZE];
+        lp_row_name(lp, n, name);
+        //   printf("nameres %s\n", name);
+
+        if(strncmp(name,"cutR",4)== 0)
+            aux = LPC_RR;
+        else if(strncmp(name,"cutCl",5)== 0)
+            aux = LPC_CLIQUE;
+        else if(strncmp(name,"cutP",4)== 0)
+            aux = LPC_PREC;
+        else if(strncmp(name,"cutCG",5)== 0)
+            aux = LPC_CG;
+        else
+            continue;
+
+        //printf("Slacks %f, maxslack %f\n", slacks[n], maxslack);
+
+        int *idx;
+        double *coef;
+        ALLOCATE_VECTOR(idx, int, nColsLP);
+        ALLOCATE_VECTOR(coef, double, nColsLP);
+
+
+        double tttt = omp_get_wtime();
+        int c = lp_row(lp,n,idx,coef);
+
+        /*     printf("Cut to be removed: \n");
+             for(int nn = 0 ; nn < c ; nn++){
+                  printf(" %f * %d ", coef[nn], idx[nn]);
+             }
+             printf("\n");*/
+
+        char sen = lp_sense(lp,n);
+        int sense = (sen == 'L' ? 0 : (sen == 'E' ? 1 : 2));
+        double rhs = lp_rhs(lp,n);
+        int key = hash_code_vint(  c, idx,  nColsLP );
+
+        /*    printf("Remover cut name %s: \n", name);
+            for(int sel = 0 ; sel<c ; sel++) {
+                printf(" %f * %d ", coef[sel], idx[sel]);
+            }
+            printf("\n");
+            printf(" key removing %d \n", key );
+            getchar();
+        */
+
+        findRow +=  (omp_get_wtime()-tttt);
+
+        double ttt = omp_get_wtime();
+        rowstoremove[cont] = n;
+        IntDblPair posrow = cutP_findElement(cutP,key,c,idx,coef,rhs,sense,nColsLP,aux);
+        //printf("removing on key %d idRow %d value %f\n", key, posrow.a, posrow.b); fflush(stdout);
+        //CutP_printHash(cutP,lp); getchar();
+        CutP_setIdRow( cutP, key, posrow.a, -1);
+        //  posrow = cutP_findElement(cutP,key,c,idx,coef,rhs,sense,nColsLP,aux);
+        // printf("new removing on key %d idRow %d value %f\n", key, posrow.a, posrow.b); fflush(stdout);
+        //CutP_printHash(cutP,lp); getchar();
+
+
+        cont++;
+        //   printf("time find elements %f. \n",  (omp_get_wtime()-ttt));
+        findElem +=  (omp_get_wtime()-ttt);
+
+        free(coef);
+        free(idx);
+    }
+    //   CutP_printHash(cutP,lp);
+    //  printf("time find row %f, time find slacks %f time find elem %f total time find rows to remove %f. \n", findRow,  findSlack, findElem, (omp_get_wtime()-removecuttime));
+    double rrr = omp_get_wtime();
+    lp_remove_rows(lp,cont,rowstoremove);
+
+    free(rowstoremove);
+    if(VERBOSE==2) printf("\nnumber of rows removed %d, lp_rows after remove cuts %d. ", cont, lp_rows(lp));
+    //   getchar();
+
+}
+
+VecDbl** CutP_getHC( CutPool *cutP )
+{
+    assert(cutP!=NULL);
+    return cutP->hashCuts;
+}
+
+void CutP_setIdRow( CutPool *cutP, int key, int idRow, int value)
+{
+    VDbl_set(cutP->hashCuts[key], idRow, value);
+}
+
+void CutP_free( CutPool **_cutP )
+{
+    CutPool *cutP = *_cutP;
+
+    for ( int i=0 ; i<cutP->nHash ; ++i )
+        VDbl_free( &cutP->hashCuts[i] );
+    free( cutP->hashCuts );
+
+    //    free( cutP->staticValues );
+
+    free( cutP );
+    *_cutP = NULL;
+}
+
+int CutP_separation(CutPool *cutP, Parameters *par,  Results *res, int cr, int cp, int cc, int cg, int cggpu, int** maxTJM, int* maxTJ, double startT, double timeLeft)
+{
+
+
+    int newCuts = 0;
+    int nround = Res_getRound(res);
+    double _time = 0;
+    double *xf = lp_x(cutP->mip);
+
+   /*Danilo*/
+    int cont=0;
+    Cut_gpu *cutG;
+    solutionGpu *solG;
+  /*  end Danilo*/
+
+    if(cr) {
+        double cutTime = omp_get_wtime();
+        //printf("MipC_CutSeparatedModesRR: start\n");fflush(stdout);
+
+        int origCols[lp_cols( cutP->mip )];
+        for ( int i=0 ; (i<lp_cols( cutP->mip )) ; ++i )
+            origCols[i] = i;
+
+
+        int cut = CutC_add_cuts_cover( cutP->mip, origCols, cutP->mip, par->inst, 0, par->continuous, par->lifting,  cutP, res);;
+        //int cut = CutC_add_cuts_cover_model( cutP->mip, origCols, cutP->mip, par->inst, 0, par->continuous, par->lifting,  cutP, res);;
+        newCuts += cut;
+        _time = ( (double) timeLeft - (omp_get_wtime()-startT) );
+        //#ifdef DEBUG
+        if(cut) {
+            if(VERBOSE==3)  {
+                printf("\n%d new cuts RR where added. nz %d. separation time %f. \n", cut, lp_nz(cutP->mip),(omp_get_wtime()-cutTime)  );
+                printf(" minViol %f, maxViol %f, avgViol %f. ", Res_getMinViol(res,nround,LPC_RR), Res_getMaxViol(res,nround,LPC_RR), (double) Res_getSumViol(res,nround,LPC_RR)/(double) Res_getNCutsTotal(res,nround,LPC_RR));
+                printf("\n max violated cut: \n");
+                for(int mv = 0 ; mv < Res_getNElementsMaxViol(res,nround,LPC_RR) ; mv++) {
+                    int elem = Res_getMaxViolCutA(res, nround ,LPC_RR,mv);
+                    double co = Res_getMaxViolCutB(res,nround,LPC_RR,mv);
+                    printf(" %f*%d : %f + ", co,elem, xf[elem]);
+                }
+                printf(" \n min violated cut: \n");
+                for(int mv = 0 ; mv < Res_getNElementsMinViol(res,nround,LPC_RR) ; mv++) {
+                    int elem = Res_getMinViolCutA(res,nround,LPC_RR,mv);
+                    double co = Res_getMinViolCutB(res,nround,LPC_RR,mv);
+                    printf(" %f*%d : %f + ", co,elem, xf[elem]);
+                }
+                printf("\n nMinElementsCuts %d, nMaxElementsCuts %d, avgElementsCuts %f.\n", Res_getNMinElementsCuts(res,nround,LPC_RR),  Res_getNMaxElementsCuts(res,nround,LPC_RR), (double) Res_getNElementsCuts(res,nround,LPC_RR)/ Res_getNCutsTotal(res,nround,LPC_RR));
+            }
+        }
+        //#endif
+        // printf("MipC_CutSeparatedModesRR: end\n");fflush(stdout);
+    }
+    // if(VERBOSE==2)
+    //  CutP_printHash(mipC->cutP, mip);
+    if(cp) {
+        //     printf("MipC_cutPrec: start\n");fflush(stdout);
+        double cutTime = omp_get_wtime();
+        int origCols[lp_cols( cutP->mip )];
+        for ( int i=0 ; (i<lp_cols( cutP->mip )) ; ++i )
+            origCols[i] = i;
+
+
+        int cut  = CutPR_add_cuts_precedence( cutP->mip, origCols, cutP->mip, par->inst ,0, par->continuous , par->lifting, maxTJM, maxTJ, par->maxcuts,  cutP, res );
+        newCuts += cut;
+        _time = ( (double) timeLeft - (omp_get_wtime()-startT) );
+        //#ifdef DEBUG
+        if(cut) {
+            if(VERBOSE==3) {
+                printf("\n%d new cuts precedence where added. nz %d.  separation time %f.  \n", cut,  lp_nz(cutP->mip), (omp_get_wtime()-cutTime)  );
+                printf(" minViol %f, maxViol %f, avgViol %f.", Res_getMinViol(res,nround,LPC_PREC), Res_getMaxViol(res,nround,LPC_PREC), (double) Res_getSumViol(res,nround,LPC_PREC)/  (double) Res_getNCutsTotal(res,nround,LPC_PREC));
+                printf("\n max violated cut: \n");
+                for(int mv = 0 ; mv < Res_getNElementsMaxViol(res,nround,LPC_PREC) ; mv++) {
+                    int elem = Res_getMaxViolCutA(res,nround,LPC_PREC,mv);
+                    double co = Res_getMaxViolCutB(res,nround,LPC_PREC,mv);
+                    printf(" %f*%d : %f + ", co,elem, xf[elem]);
+                }
+                printf(" \n min violated cut: \n");
+                for(int mv = 0 ; mv < Res_getNElementsMinViol(res,nround,LPC_PREC) ; mv++) {
+                    int elem = Res_getMinViolCutA(res,nround,LPC_PREC,mv);
+                    double co = Res_getMinViolCutB(res,nround,LPC_PREC,mv);
+                    printf(" %f*%d : %f + ", co,elem, xf[elem]);
+                }
+                printf("\n nMinElementsCuts %d, nMaxElementsCuts %d, avgElementsCuts %f.\n", Res_getNMinElementsCuts(res,nround,LPC_PREC),  Res_getNMaxElementsCuts(res,nround,LPC_PREC), (double) Res_getNElementsCuts(res,nround,LPC_PREC)/ Res_getNCutsTotal(res,nround,LPC_PREC));
+            }
+        }
+        //#endif
+        // printf("MipC_cutPrec: end\n");fflush(stdout);
+    }
+    // if(VERBOSE==2)
+    //  CutP_printHash(mipC->cutP, mip);
+
+    if(cc) {
+        //       printf("MipC_cutCLIQUE: start\n");fflush(stdout);
+        double cutTime = omp_get_wtime();
+
+        int origCols[lp_cols( cutP->mip )];
+        for ( int i=0 ; (i<lp_cols( cutP->mip )) ; ++i )
+            origCols[i] = i;
+
+        int cut = CutCL_add_cuts_conflicts_clique( cutP->mip, origCols, cutP->mip, par->inst , 0, par->continuous, maxTJM, par->maxcuts,  cutP, res);
+        newCuts += cut;
+        _time = ( (double) timeLeft - (omp_get_wtime()-startT) );
+        //#ifdef DEBUG
+        if(cut) {
+            if(VERBOSE==3)  {
+                printf("\n%d new cuts CLIQUE where added. nz %d.  separation time %f.  \n", cut, lp_nz(cutP->mip),  (omp_get_wtime()-cutTime) );
+                printf(" minViol %f, maxViol %f, avgViol %f.", Res_getMinViol(res,nround,LPC_CLIQUE), Res_getMaxViol(res,nround,LPC_CLIQUE), (double) Res_getSumViol(res,nround,LPC_CLIQUE)/  (double) Res_getNCutsTotal(res,nround,LPC_CLIQUE));
+                printf("\n max violated cut: \n");
+                for(int mv = 0 ; mv < Res_getNElementsMaxViol(res,nround,LPC_CLIQUE) ; mv++) {
+                    int elem = Res_getMaxViolCutA(res,nround,LPC_CLIQUE,mv);
+                    double co = Res_getMaxViolCutB(res,nround,LPC_CLIQUE,mv);
+                    printf(" %f*%d : %f + ", co,elem, xf[elem]);
+                }
+                printf(" \n min violated cut: \n");
+                for(int mv = 0 ; mv < Res_getNElementsMinViol(res,nround,LPC_CLIQUE) ; mv++) {
+                    int elem = Res_getMinViolCutA(res,nround,LPC_CLIQUE,mv);
+                    double co = Res_getMinViolCutB(res,nround,LPC_CLIQUE,mv);
+                    printf(" %f*%d : %f + ", co,elem, xf[elem]);
+                }
+                printf("\n nMinElementsCuts %d, nMaxElementsCuts %d, avgElementsCuts %f.\n", Res_getNMinElementsCuts(res,nround,LPC_CLIQUE),  Res_getNMaxElementsCuts(res,nround,LPC_CLIQUE), (double) Res_getNElementsCuts(res,nround,LPC_CLIQUE)/ Res_getNCutsTotal(res,nround,LPC_CLIQUE));
+            }
+        }
+        //  printf("MipC_cutCLIQUE: end\n");fflush(stdout);
+        //#endif
+    }
+    // if(VERBOSE==2)
+    //  CutP_printHash(cutP, mip);
+    if(cg) {
+        //  printf("MipC_cutCG: start\n");fflush(stdout);
+        double cutTime = omp_get_wtime();
+
+        int origCols[lp_cols( cutP->mip )];
+        for ( int i=0 ; (i<lp_cols( cutP->mip )) ; ++i )
+            origCols[i] = i;
+
+        _time = ( (double) timeLeft - (omp_get_wtime()-startT) );
+
+        /*Selected rows to GPU */
+        CutCG *ccg = CutCG_creat_and_identify_rows( cutP->mip, origCols, cutP->mip, par->inst , _time, par->continuous, maxTJM, par->maxcuts,par->mininstant , par->maxinstant, par->jump,  cutP, res);
+
+        //CutCG_print(ccg);
+
+        int cut  = CutCG_add_cuts_conflicts_CG( ccg, cutP->mip, par->inst , _time, par->continuous, maxTJM, par->maxcuts,par->mininstant , par->maxinstant, par->jump,  cutP, res);
+        newCuts += cut;
+
+        _time = ( (double) timeLeft - (omp_get_wtime()-startT) );
+        //#ifdef DEBUG
+        if(cut) {
+            if(VERBOSE==3) {
+                printf("\n%d new cuts CG where added. nz %d. separation time %f.  \n", cut, lp_nz(cutP->mip),  (omp_get_wtime()-cutTime) );
+                printf(" minViol %f, maxViol %f, avgViol %f.", Res_getMinViol(res,nround,LPC_CG), Res_getMaxViol(res,nround,LPC_CG), (double) Res_getSumViol(res,nround,LPC_CG)/  (double) Res_getNCutsTotal(res,nround,LPC_CG));
+                printf("\n max violated cut: \n");
+                printf("\n roundUR %d, contUR %d, roundURN %d, contURN %d, roundUM %d, contUM %d, roundUCI %d, contUCI %d, roundUCP %d, contUCP %d \n", Res_getUsoUR(res,nround), Res_getTotalUsoUR(res), Res_getUsoURN(res,nround), Res_getTotalUsoURN(res), Res_getUsoUM(res,nround), Res_getTotalUsoUM(res),Res_getUsoUCI(res,nround), Res_getTotalUsoUCI(res), Res_getUsoUCP(res,nround), Res_getTotalUsoUCP(res));
+                for(int mv = 0 ; mv < Res_getNElementsMaxViol(res,nround,LPC_CG) ; mv++) {
+                    int elem = Res_getMaxViolCutA(res,nround,LPC_CG,mv);
+                    double co = Res_getMaxViolCutB(res,nround,LPC_CG,mv);
+                    printf(" %f*%d : %f + ", co,elem, xf[elem]);
+                }
+                printf(" \n min violated cut: \n");
+                for(int mv = 0 ; mv < Res_getNElementsMinViol(res,nround,LPC_CG) ; mv++) {
+                    int elem = Res_getMinViolCutA(res,nround,LPC_CG,mv);
+                    double co = Res_getMinViolCutB(res,nround,LPC_CG,mv);
+                    printf(" %f*%d : %f + ", co,elem, xf[elem]);
+                }
+                printf("\n nMinElementsCuts %d, nMaxElementsCuts %d, avgElementsCuts %f.\n", Res_getNMinElementsCuts(res,nround,LPC_CG),  Res_getNMaxElementsCuts(res,nround,LPC_CG), (double) Res_getNElementsCuts(res,nround,LPC_CG)/ Res_getNCutsTotal(res,nround,LPC_CG));
+                fflush(stdout);
+            }
+        }
+        CutCG_free(&ccg);
+        //  printf("MipC_cutCG: end\n");fflush(stdout);
+        //#endif
+    }
+
+    if(cggpu) {
+        //  printf("MipC_cutCG: start\n");fflush(stdout);
+        double cutTime = omp_get_wtime();
+
+        int origCols[lp_cols( cutP->mip )];
+        for ( int i=0 ; (i<lp_cols( cutP->mip )) ; ++i )
+            origCols[i] = i;
+
+        _time = ( (double) timeLeft - (omp_get_wtime()-startT) );
+
+        /*Selected rows to GPU */
+        CutCG *ccg = CutCG_creat_and_identify_rows( cutP->mip, origCols, cutP->mip, par->inst , _time, par->continuous, maxTJM, par->maxcuts,par->mininstant , par->maxinstant, par->jump,  cutP, res);
+	
+        CutCG_print(ccg);
+	/*Danilo GPU*/	
+	for( int r = 0 ; r < VDbl_size(selrows->rowrhs) ; r++) {
+            cont+= VDbl_size(ccg->rowCoef[r]);
+	}
+        cutG =  AllocationStructCut(cont,VDbl_size(CutCG_getrowrhs(ccg)),VDbl_size(CutCG_getxfElemPP(ccg)));
+        fillStructCut_gpu(cutG,ccg);
+        showStructCut_GPU(cutG);
+        solG = allocationStructSolution(cutG);
+        runGPU_New(cutG,solG,ccg);
+        CutCG_printCut(ccg);
+        //getchar();
+        free(solG);
+        free(cutG);
+	/*Danilo end GPU*/
+        _time = ( (double) timeLeft - (omp_get_wtime()-startT) );
+        int cut  = CutCG_add_cuts_gpu_CG( ccg, cutP->mip, par->inst, _time, par->continuous,  par->maxcuts, cutP, res);
+        newCuts += cut;
+
+        _time = ( (double) timeLeft - (omp_get_wtime()-startT) );
+        //#ifdef DEBUG
+        if(cut) {
+            if(VERBOSE==3) {
+                printf("\n%d new cuts CG GPU where added. nz %d. separation time %f.  \n", cut, lp_nz(cutP->mip),  (omp_get_wtime()-cutTime) );
+                printf(" minViol %f, maxViol %f, avgViol %f.", Res_getMinViol(res,nround,LPC_CGGPU), Res_getMaxViol(res,nround,LPC_CGGPU), (double) Res_getSumViol(res,nround,LPC_CGGPU)/  (double) Res_getNCutsTotal(res,nround,LPC_CGGPU));
+                printf("\n max violated cut: \n");
+                printf("\n roundUR %d, contUR %d, roundURN %d, contURN %d, roundUM %d, contUM %d, roundUCI %d, contUCI %d, roundUCP %d, contUCP %d \n", Res_getUsoUR(res,nround), Res_getTotalUsoUR(res), Res_getUsoURN(res,nround), Res_getTotalUsoURN(res), Res_getUsoUM(res,nround), Res_getTotalUsoUM(res),Res_getUsoUCI(res,nround), Res_getTotalUsoUCI(res), Res_getUsoUCP(res,nround), Res_getTotalUsoUCP(res));
+                for(int mv = 0 ; mv < Res_getNElementsMaxViol(res,nround,LPC_CGGPU) ; mv++) {
+                    int elem = Res_getMaxViolCutA(res,nround,LPC_CGGPU,mv);
+                    double co = Res_getMaxViolCutB(res,nround,LPC_CGGPU,mv);
+                    printf(" %f*%d : %f + ", co,elem, xf[elem]);
+                }
+                printf(" \n min violated cut: \n");
+                for(int mv = 0 ; mv < Res_getNElementsMinViol(res,nround,LPC_CGGPU) ; mv++) {
+                    int elem = Res_getMinViolCutA(res,nround,LPC_CGGPU,mv);
+                    double co = Res_getMinViolCutB(res,nround,LPC_CGGPU,mv);
+                    printf(" %f*%d : %f + ", co,elem, xf[elem]);
+                }
+                printf("\n nMinElementsCuts %d, nMaxElementsCuts %d, avgElementsCuts %f.\n", Res_getNMinElementsCuts(res,nround,LPC_CG),  Res_getNMaxElementsCuts(res,nround,LPC_CG), (double) Res_getNElementsCuts(res,nround,LPC_CG)/ Res_getNCutsTotal(res,nround,LPC_CG));
+                fflush(stdout);
+            }
+        }
+        CutCG_free(&ccg);
+        //  printf("MipC_cutCG: end\n");fflush(stdout);
+        //#endif
+    }
+
+    // if(VERBOSE==2)
+    //   CutP_printHash(mipC->cutP, mip);
+    return newCuts;
+
+}
+
+void CutP_quick_sort (IntDblPair *a, int n)
+{
+    if (n < 2)
+        return;
+    int i = 0, j = 0, p = 0;
+    p = a[n / 2].a;
+    for (i = 0, j = n - 1;; i++, j--) {
+        int t = 0;
+        while (a[i].a < p)
+            i++;
+        while (p < a[j].a)
+            j--;
+        if (i >= j)
+            break;
+        t = a[i].a;
+        a[i].a = a[j].a;
+        a[j].a = t;
+    }
+    CutP_quick_sort(a, i);
+    CutP_quick_sort(a + i, n - i);
+}
+
+void CutP_quick_sort_vec ( int *idx, double *coe, int n)
+{
+    if (n < 2)
+        return;
+    int i = 0, j = 0, p = 0;
+    p = idx[n/2];
+    for (i = 0, j = n - 1;; i++, j--) {
+        int t = 0;
+        double co = 0;
+        while (idx[i] < p)
+            i++;
+        while (p < idx[j])
+            j--;
+        if (i >= j)
+            break;
+        t = idx[i];
+        idx[i]=idx[j];
+        idx[j]=t;
+
+        co = coe[i];
+        coe[i]=coe[j];
+        coe[j]=co;
+    }
+    CutP_quick_sort_vec(idx, coe, i);
+    CutP_quick_sort_vec(idx+i, coe+i, n - i);
+}
+
+void CutP_quick_sort_vec_by_double ( int *idx, double *coe, int n)
+{
+    if (n < 2)
+        return;
+    int i = 0, j = 0;
+    double p = 0;
+    p = coe[n/2];
+    for (i = 0, j = n - 1;; i++, j--) {
+        double va = 0.0;
+        int id = 0;
+        while (coe[i] < p)
+            i++;
+        while (p < coe[j])
+            j--;
+        if (i >= j)
+            break;
+        va = coe[i];
+        coe[i]=coe[j];
+        coe[j]=va;
+
+        id = idx[i];
+        idx[i]=idx[j];
+        idx[j]=id;
+    }
+    CutP_quick_sort_vec_by_double(idx, coe, i);
+    CutP_quick_sort_vec_by_double(idx+i, coe+i, n - i);
+}

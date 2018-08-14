@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="lslahc" />
+		<Option pch_mode="2" />
+		<Option default_target="opt" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="dbg">
+				<Option output="bin/dbg/lslahc" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/dbg/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option parameters="../in/rcpsp/j120.sm/ j12013_2.sm j12013_2.sol 300 ../sol/initSol/rcpsp/j120/j12013_2.sol 1 -rcpsp -lfa 1000 -online 1 -itUp 1000 -divTransMode 1 -divTransJob 1 -nDiversification 1000 -nStayDiversification 10" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-pg" />
+					<Add option="-g" />
+					<Add option="-lpthread" />
+					<Add option="-fopenmp" />
+					<Add option="-DDEBUG" />
+					<Add directory="include" />
+					<Add directory="../src" />
+				</Compiler>
+				<Linker>
+					<Add option="-pg" />
+					<Add option="-lpthread" />
+					<Add option="-fopenmp" />
+					<Add library="pthread" />
+				</Linker>
+			</Target>
+			<Target title="opt">
+				<Option output="bin/opt/lslahc" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/opt/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option parameters="../in/ A-10.txt A-10.sol 300 ../sol/initSol/A-10_init_1.sol 1 -lfa 1000 -online 1 -itUp 100000" />
+				<Compiler>
+					<Add option="-O2" />
+					<Add option="-pg" />
+					<Add option="-g" />
+					<Add option="-lpthread" />
+					<Add option="-fopenmp" />
+					<Add option="-DNDEBUG" />
+					<Add option="-DCPX" />
+					<Add directory="include" />
+					<Add directory="../src" />
+					<Add directory="/opt/ibm/ILOG/CPLEX_Studio1262/cplex/include/ilcplex/" />
+				</Compiler>
+				<Linker>
+					<Add option="-pg" />
+					<Add option="-lpthread" />
+					<Add option="-fopenmp" />
+					<Add library="pthread" />
+					<Add library="cplex" />
+					<Add directory="/opt/ibm/ILOG/CPLEX_Studio1262/cplex/lib/x86-64_linux/static_pic/" />
+				</Linker>
+			</Target>
+			<Target title="dbgsan">
+				<Option output="bin/dbg/lslahc" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/dbg/" />
+				<Option type="1" />
+				<Option compiler="clang" />
+				<Option parameters="../in/ A-10.txt A-10.sol 10 ../sol/initSol/A-10_init.sol " />
+				<Compiler>
+					<Add option="-fsanitize=address" />
+					<Add option="-ftrapv" />
+					<Add option="-fsanitize=undefined-trap -fsanitize-undefined-trap-on-error" />
+					<Add option="-g" />
+					<Add option="-fopenmp" />
+					<Add option="-DDEBUG" />
+					<Add option="-DCPX" />
+					<Add directory="include" />
+					<Add directory="../src" />
+				</Compiler>
+				<Linker>
+					<Add option="-fsanitize=address" />
+					<Add option="-lpthread" />
+					<Add option="-fopenmp" />
+				</Linker>
+			</Target>
+			<Target title="dbgsanmem">
+				<Option output="bin/dbg/lslahc" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/dbg/" />
+				<Option type="1" />
+				<Option compiler="clang" />
+				<Option parameters="../in/ X-10.txt X-10.sol 30 ../sol/initSol/X-10_init.sol" />
+				<Compiler>
+					<Add option="-fsanitize=address" />
+					<Add option="-ftrapv" />
+					<Add option="-g" />
+					<Add option="-flto -fopenmp -DCPX" />
+					<Add option="-DDEBUG" />
+					<Add option="-DCPX" />
+					<Add directory="include" />
+					<Add directory="../src" />
+					<Add directory="/opt/ibm/ILOG/CPLEX_Studio1263/cplex/include/ilcplex/" />
+				</Compiler>
+				<Linker>
+					<Add option="-fopenmp" />
+					<Add option="-fsanitize=address" />
+					<Add library="cplex" />
+					<Add library="pthread" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+			<Add option="-std=c99" />
+		</Compiler>
+		<Unit filename="dict_int.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="dict_int.h" />
+		<Unit filename="instance.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="instance.h" />
+		<Unit filename="lahc.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="lahc.h" />
+		<Unit filename="learning.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="learning.h" />
+		<Unit filename="list_int.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="list_int.h" />
+		<Unit filename="long_compl_path.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="long_compl_path.h" />
+		<Unit filename="lslahc.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="lslahc.c.orig" />
+		<Unit filename="macros.h" />
+		<Unit filename="memory.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="memory.h" />
+		<Unit filename="mode_set.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="mode_set.h" />
+		<Unit filename="neighborhood.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="neighborhood.h" />
+		<Unit filename="node_heap.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="node_heap.h" />
+		<Unit filename="rrusage.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="rrusage.h" />
+		<Unit filename="solution.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="solution.h" />
+		<Unit filename="stack.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="stack.h" />
+		<Unit filename="str_utils.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="str_utils.h" />
+		<Unit filename="test.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="test.h" />
+		<Unit filename="tokenizer.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="tokenizer.h" />
+		<Unit filename="top_sort.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="top_sort.h" />
+		<Unit filename="vec_char.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vec_char.h" />
+		<Unit filename="vec_double.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vec_double.h" />
+		<Unit filename="vec_int.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vec_int.h" />
+		<Unit filename="vec_str.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vec_str.h" />
+		<Unit filename="vnd.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vnd.h" />
+		<Unit filename="vns.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vns.h" />
+		<Extensions>
+			<code_completion />
+			<envvars />
+			<debugger />
+			<editor_config active="1" use_tabs="0" tab_indents="1" tab_width="4" indent="4" eol_mode="0" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>

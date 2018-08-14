@@ -1,0 +1,334 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="psplp" />
+		<Option pch_mode="2" />
+		<Option default_target="opt" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="dbg">
+				<Option output="bin/dbg/pspround" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/dbg/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option parameters="/home/janniele/Dropbox/Doutorado/GIT/gpsp/in/mmrcmpsp/ A-4.txt  A-4.lp 100 65 -1 3 -mmrcmpsp " />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-std=c99" />
+					<Add option="-pg" />
+					<Add option="-g" />
+					<Add option="-lpthread" />
+					<Add option="-fopenmp" />
+					<Add option="-DDEBUG" />
+					<Add option="-DCPX" />
+					<Add directory="include" />
+					<Add directory="../src" />
+					<Add directory="/opt/ibm/ILOG/CPLEX_Studio1263/cplex/include/ilcplex/" />
+				</Compiler>
+				<Linker>
+					<Add option="-pg" />
+					<Add option="-lpthread" />
+					<Add option="-fopenmp" />
+					<Add library="cplex" />
+					<Add library="pthread" />
+					<Add directory="/opt/ibm/ILOG/CPLEX_Studio1263/cplex/lib/x86-64_linux/static_pic/" />
+				</Linker>
+			</Target>
+			<Target title="opt">
+				<Option output="bin/opt/pspround" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/opt/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option parameters="/home/janniele/Dropbox/Doutorado/GIT/gpsp/in/mmrcmpsp/ A-4.txt  A-4.lp 100 65 -1 3 -mmrcmpsp " />
+				<Compiler>
+					<Add option="-O2" />
+					<Add option="-std=c99" />
+					<Add option="-pg" />
+					<Add option="-g" />
+					<Add option="-lpthread" />
+					<Add option="-fopenmp" />
+					<Add option="-DNDEBUG" />
+					<Add option="-DCPX" />
+					<Add directory="include" />
+					<Add directory="../src" />
+					<Add directory="/opt/ibm/ILOG/CPLEX_Studio1263/cplex/include/ilcplex/" />
+				</Compiler>
+				<Linker>
+					<Add option="-pg" />
+					<Add option="-lpthread" />
+					<Add option="-fopenmp" />
+					<Add library="pthread" />
+					<Add library="cplex" />
+					<Add directory="/opt/ibm/ILOG/CPLEX_Studio1263/cplex/lib/x86-64_linux/static_pic/" />
+				</Linker>
+			</Target>
+			<Target title="dbgsan">
+				<Option output="bin/dbg/lslahc" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/dbg/" />
+				<Option type="1" />
+				<Option compiler="clang" />
+				<Option parameters="/home/janniele/Dropbox/Doutorado/GIT/gpsp/in/mmrcmpsp/ A-4.txt  A-4.lp 100 65 -1 3 -mmrcmpsp " />
+				<Compiler>
+					<Add option="-fsanitize=address" />
+					<Add option="-ftrapv" />
+					<Add option="-fsanitize=undefined-trap -fsanitize-undefined-trap-on-error" />
+					<Add option="-g" />
+					<Add option="-flto -fopenmp `pkg-config --cflags cbc`" />
+					<Add option="-DDEBUG" />
+					<Add option="-DCBC" />
+					<Add directory="include" />
+					<Add directory="../src" />
+				</Compiler>
+				<Linker>
+					<Add option="-fsanitize=address" />
+					<Add option="-fopenmp" />
+					<Add option="`pkg-config --cflags cbc`" />
+				</Linker>
+			</Target>
+			<Target title="dbgsanmem">
+				<Option output="bin/dbg/lslahc" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/dbg/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option parameters="/home/janniele/Dropbox/Doutorado/GIT/gpsp/in/mmrcmpsp/ A-4.txt  A-4.lp 100 65 -1 3 -mmrcmpsp " />
+				<Compiler>
+					<Add option="-Wall" />
+					<Add option="-m64" />
+					<Add option="-g" />
+					<Add option="-fsanitize=address" />
+					<Add option="-flto -fopenmp `pkg-config --cflags cbc`" />
+					<Add option="-DDEBUG" />
+					<Add option="-DCBC" />
+					<Add directory="include" />
+					<Add directory="../src" />
+				</Compiler>
+				<Linker>
+					<Add option="-m64" />
+					<Add option="-fsanitize=address" />
+					<Add option="-fopenmp" />
+					<Add option="`pkg-config --libs cbc`" />
+				</Linker>
+			</Target>
+			<Target title="dbgcbc">
+				<Option output="bin/dbg/pspround" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/dbg/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option parameters="/home/janniele/Dropbox/Doutorado/GIT/gpsp/in/mmrcmpsp/ A-4.txt  A-4.lp 100 65 -1 3 -mmrcmpsp " />
+				<Compiler>
+					<Add option="-std=c99" />
+					<Add option="-pg" />
+					<Add option="-g" />
+					<Add option="-fsanitize=address" />
+					<Add option="-fopenmp" />
+					<Add option="`pkg-config --cflags cbc`" />
+					<Add option="-DDEBUG" />
+					<Add option="-DCBC" />
+					<Add directory="include" />
+					<Add directory="../src" />
+				</Compiler>
+				<Linker>
+					<Add option="-pg" />
+					<Add option="-lasan" />
+					<Add option="-fsanitize=address" />
+					<Add option="`pkg-config --libs cbc`" />
+					<Add option="-fopenmp" />
+				</Linker>
+			</Target>
+			<Target title="grb">
+				<Option output="bin/opt/psplp" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/opt/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option parameters="/home/janniele/Dropbox/Doutorado/GIT/gpsp/ComputeCanadaTest/results/results48g24hopt/ j1206_9-results_cuts_optimality.txt.out" />
+				<Compiler>
+					<Add option="-O3" />
+					<Add option="-std=c99" />
+					<Add option="-lpthread" />
+					<Add option="-fopenmp" />
+					<Add option="-DDEBUG" />
+					<Add option="-DGRB" />
+					<Add directory="include" />
+					<Add directory="../src" />
+					<Add directory="../../../../../../../opt/gurobi752/linux64/include" />
+				</Compiler>
+				<Linker>
+					<Add option="-fopenmp" />
+					<Add library="../../../../../../../opt/gurobi752/linux64/lib/libgurobi75.so" />
+					<Add library="pthread" />
+					<Add library="../../../../../../../opt/gurobi752/linux64/lib/libgurobi_c++.a" />
+					<Add library="../../../../../../../opt/gurobi752/linux64/lib/libgurobi_g++5.2.a" />
+					<Add directory="../../../../../../../opt/gurobi752/linux64/lib" />
+				</Linker>
+			</Target>
+			<Target title="cpxdbgasan">
+				<Option output="bin/opt/pspround" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/opt/" />
+				<Option type="1" />
+				<Option compiler="clang" />
+				<Option parameters="/home/janniele/Dropbox/Doutorado/GIT/gpsp/in/mmrcmpsp/ A-4.txt  A-4.lp 100 65 -1 3 -mmrcmpsp " />
+				<Compiler>
+					<Add option="-fsanitize=address" />
+					<Add option="-Wall" />
+					<Add option="-g" />
+					<Add option="-pg" />
+					<Add option="-fopenmp" />
+					<Add option="-DDEBUG" />
+					<Add option="-DCPX" />
+					<Add directory="include" />
+					<Add directory="../src" />
+					<Add directory="/opt/ibm/ILOG/CPLEX_Studio1263/cplex/include/ilcplex/" />
+				</Compiler>
+				<Linker>
+					<Add option="-fsanitize=address" />
+					<Add option="-pg" />
+					<Add option="-fopenmp" />
+					<Add library="cplex" />
+					<Add directory="/opt/ibm/ILOG/CPLEX_Studio1263/cplex/lib/x86-64_linux/static_pic/" />
+				</Linker>
+			</Target>
+			<Target title="cpxdbg">
+				<Option output="bin/opt/pspround" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/opt/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option parameters="/home/janniele/Dropbox/Doutorado/GIT/gpsp/in/mmrcmpsp/ A-4.txt  A-4.lp 100 65 -1 3 -mmrcmpsp " />
+				<Compiler>
+					<Add option="-O2" />
+					<Add option="-std=c99" />
+					<Add option="-pg" />
+					<Add option="-g" />
+					<Add option="-fopenmp" />
+					<Add option="-DDEBUG" />
+					<Add option="-DCPX" />
+					<Add directory="include" />
+					<Add directory="../src" />
+					<Add directory="/opt/ibm/ILOG/CPLEX_Studio1263/cplex/include/ilcplex/" />
+				</Compiler>
+				<Linker>
+					<Add option="-pg" />
+					<Add option="-fopenmp" />
+					<Add library="cplex" />
+					<Add directory="/opt/ibm/ILOG/CPLEX_Studio1263/cplex/lib/x86-64_linux/static_pic/" />
+				</Linker>
+			</Target>
+			<Target title="grbdbgasan">
+				<Option output="bin/opt/pspround" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/opt/" />
+				<Option type="1" />
+				<Option compiler="clang" />
+				<Option parameters="/home/janniele/Dropbox/Doutorado/GIT/gpsp/in/mmrcmpsp/ A-4.txt  A-4.lp 100 65 -1 3 -mmrcmpsp " />
+				<Compiler>
+					<Add option="-fsanitize=address" />
+					<Add option="-Wall" />
+					<Add option="-g" />
+					<Add option="-pg" />
+					<Add option="-fopenmp" />
+					<Add option="-DDEBUG" />
+					<Add option="-DGRB" />
+					<Add directory="include" />
+					<Add directory="../src" />
+					<Add directory="../../../../../../../opt/gurobi702/linux64/include" />
+				</Compiler>
+				<Linker>
+					<Add option="-fsanitize=address" />
+					<Add option="-pg" />
+					<Add option="-fopenmp" />
+					<Add library="../../../../../../../opt/gurobi702/linux64/lib/libgurobi70.so" />
+					<Add library="pthread" />
+					<Add library="../../../../../../../opt/gurobi702/linux64/lib/libgurobi_c++.a" />
+					<Add library="../../../../../../../opt/gurobi702/linux64/lib/libgurobi_g++5.2.a" />
+					<Add directory="../../../../../../../opt/gurobi702/linux64/lib" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+		</Compiler>
+		<Unit filename="dict_int.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="dict_int.h" />
+		<Unit filename="instance.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="instance.h" />
+		<Unit filename="list_int.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="list_int.h" />
+		<Unit filename="lp.cpp" />
+		<Unit filename="lp.h" />
+		<Unit filename="macros.h" />
+		<Unit filename="memory.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="memory.h" />
+		<Unit filename="mode_set.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="mode_set.h" />
+		<Unit filename="node_heap.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="node_heap.h" />
+		<Unit filename="psplp.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="rrusage.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="rrusage.h" />
+		<Unit filename="solution.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="solution.h" />
+		<Unit filename="stack.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="stack.h" />
+		<Unit filename="str_utils.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="str_utils.h" />
+		<Unit filename="tokenizer.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="tokenizer.h" />
+		<Unit filename="vec_char.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vec_char.h" />
+		<Unit filename="vec_double.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vec_double.h" />
+		<Unit filename="vec_int.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vec_int.h" />
+		<Unit filename="vec_str.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vec_str.h" />
+		<Unit filename="vectormgm.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vectormgm.h" />
+		<Unit filename="vint_queue.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vint_queue.h" />
+		<Unit filename="vint_set.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vint_set.h" />
+		<Extensions>
+			<code_completion />
+			<envvars />
+			<debugger />
+			<editor_config active="1" use_tabs="0" tab_indents="1" tab_width="4" indent="4" eol_mode="0" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>

@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<CodeBlocks_project_file>
+	<FileVersion major="1" minor="6" />
+	<Project>
+		<Option title="iinfo" />
+		<Option pch_mode="2" />
+		<Option compiler="gcc" />
+		<Build>
+			<Target title="dbg">
+				<Option output="bin/dbg/info" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/dbg/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Option parameters="../in/mmrcmpsp/ A-1.txt -mmrcmpsp" />
+				<Compiler>
+					<Add option="-g" />
+					<Add option="-DDEBUG" />
+					<Add directory="include" />
+					<Add directory="../src" />
+				</Compiler>
+			</Target>
+			<Target title="opt">
+				<Option output="bin/opt/iinfo" prefix_auto="1" extension_auto="1" />
+				<Option object_output="obj/opt/" />
+				<Option type="1" />
+				<Option compiler="gcc" />
+				<Compiler>
+					<Add option="-O2" />
+					<Add option="-DNDEBUG" />
+					<Add directory="include" />
+					<Add directory="../src" />
+				</Compiler>
+				<Linker>
+					<Add option="-s" />
+				</Linker>
+			</Target>
+		</Build>
+		<Compiler>
+			<Add option="-Wall" />
+			<Add option="-std=c99" />
+		</Compiler>
+		<Unit filename="iinfo.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="info_instance.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="info_instance.h" />
+		<Unit filename="instance.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="instance.h" />
+		<Unit filename="macros.h" />
+		<Unit filename="memory.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="memory.h" />
+		<Unit filename="stack.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="stack.h" />
+		<Unit filename="str_utils.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="str_utils.h" />
+		<Unit filename="tokenizer.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="tokenizer.h" />
+		<Unit filename="vec_char.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vec_char.h" />
+		<Unit filename="vec_int.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vec_int.h" />
+		<Unit filename="vec_str.c">
+			<Option compilerVar="CC" />
+		</Unit>
+		<Unit filename="vec_str.h" />
+		<Extensions>
+			<code_completion />
+			<envvars />
+			<debugger />
+			<editor_config active="1" use_tabs="0" tab_indents="1" tab_width="4" indent="4" eol_mode="0" />
+		</Extensions>
+	</Project>
+</CodeBlocks_project_file>

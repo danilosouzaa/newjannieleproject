@@ -1,0 +1,25 @@
+Coding Conventions:
+
+    identation: 4 spaces
+
+    ClassName
+
+    functionName
+
+    methods:
+        CName_methodName
+          ^
+          +-- abbreviation of class name
+
+    if ( expression ) {
+        command1();
+        command();
+    } else {
+        command();      <-  use brackets even if this is just one command
+    }
+
+    * by calling format.sh all code will be formatted with current coding conventions
+    (requires astyle)
+
+
+

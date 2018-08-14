@@ -1,0 +1,10 @@
+# update tags file which is used for completion in some editors
+
+ctags -R --c++-kinds=+p --fields=+iaS --extra=+q *.h *.c \
+          /usr/include/stdlib.h \
+          /usr/include/stdio.h \
+          /usr/include/ctype.h \
+          /usr/include/math.h \
+          /usr/include/stdint.h \
+          /usr/include/limits.h \
+

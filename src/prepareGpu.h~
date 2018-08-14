@@ -1,0 +1,19 @@
+#ifndef PREPARE_GPU_H
+#define  PREPARE_GPU_H
+
+//#include "cut_gpu.h"
+#include "configGpu.h"
+#include "solutionGpu.h"
+#include "gpulib/types.h"
+
+
+void fillStructCut_gpu(Cut_gpu *cutG,CutCG *ccg);
+
+void showStructCut_GPU(Cut_gpu *cutG);
+
+//void createCuts(Cut_gpu *h_cut, solutionGpu *h_solution,SelectedRows *selrows, int cont);
+
+void runGPU_New(Cut_gpu *h_cut, solutionGpu *h_sol, CutCG *ccg);
+
+
+#endif
