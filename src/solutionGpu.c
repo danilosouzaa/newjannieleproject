@@ -1081,6 +1081,41 @@ void DecimalToBinaryCpu(int number,unsigned char v[], int sizegroup)
         i--;
     }
 }
+void show_contraints(Cut_gpu *h_cut, int constraint){
+    int aux = 0, i, j, el;
+     for(j = h_cut->ElementsConstraints[constraint]; j< h_cut->ElementsConstraints[constraint + 1]; j++)
+     {
+        if( aux == 0 ){
+            printf("%d X_%d ", h_cut->Coefficients[j], h_cut->Elements[j]);
+            aux++;
+        }else{
+            printf("+ %d X_%d ", h_cut->Coefficients[j], h_cut->Elements[j]);
+        }
+
+     }
+     printf(" < %d \n ", h_cut->rightSide[constraint]);
+}
+
+
+void show_cuts_used_zero_half(Cut_gpu *h_cut, int *h_solution, int sizeGroup, int nBlocks, int nThreads){
+    unsigned char *v_sol_bin = (unsigned char*)malloc(sizeof(unsigned char)*(nBlocks*nThreads));
+    int i,j;
+    int aux = 1, constraint;
+    for(i=0;i<nBlocks*nThreads;i++){
+        if(h_solution[i]!= -1){
+            printf("New Cut \n Used Constraints:\n");
+            DecimalToBinaryCpu(h_solution[i],v_sol_bin,sizeGroup);
+            for(j = 0; j < sizeGroup;j++){
+                if(v_sol_bin[i]==1){
+                    constraint = i;
+                    show_contraints(h_cut,constraint);
+                }
+            }
+        }
+
+    }
+}
+
 
 Cut_gpu* createCutsStrongZeroHalf(Cut_gpu *h_cut, int *h_solution, int sizeGroup, int nBlocks, int nThreads, int precision, int nCuts, int cont_ini, int nC_initial)
 {
@@ -1140,7 +1175,7 @@ Cut_gpu* createCutsStrongZeroHalf(Cut_gpu *h_cut, int *h_solution, int sizeGroup
                 rhs += h_cut->rightSide[j]*v_sol_bin[j];
             }
             rhs_mult = (long double)rhs/ (long double) 2;
-            rhs = h_cut->rightSide[constraint] * n1;
+            //rhs = h_cut->rightSide[constraint] * n1;
             if(rhs<0)
             {
                 rhs = (rhs/2) - 1;
