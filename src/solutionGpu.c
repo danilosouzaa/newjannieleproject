@@ -1102,18 +1102,22 @@ void show_cuts_used_zero_half(Cut_gpu *h_cut, int *h_solution, int sizeGroup, in
     int i,j;
     int aux = 1, constraint;
     for(i=0;i<nBlocks*nThreads;i++){
-        if(h_solution[i]!= -1){
-            printf("New Cut \n Used Constraints:\n");
+        if(h_solution[i] != -1){
+            printf("New Cut \nUsed Constraints: %d\n", h_solution[i]);
             DecimalToBinaryCpu(h_solution[i],v_sol_bin,sizeGroup);
             for(j = 0; j < sizeGroup;j++){
-                if(v_sol_bin[i]==1){
-                    constraint = i;
+                if(v_sol_bin[j]==1){
+                    constraint = j;
                     show_contraints(h_cut,constraint);
                 }
             }
         }
 
     }
+    for(i=0;i< h_cut->numberVariables;i++){
+        printf("x_%d = %d\n", i , h_cut->xAsterisc[i]);
+    }
+    getchar();
 }
 
 
@@ -1146,6 +1150,7 @@ Cut_gpu* createCutsStrongZeroHalf(Cut_gpu *h_cut, int *h_solution, int sizeGroup
     Pos_el_temp[0] = 0;
 //    printf("Initial phase 1!\n");
     int nRuns = nThreads*nBlocks;
+    //show_cuts_used_zero_half(h_cut, h_solution, sizeGroup, nBlocks, nThreads);
     for(i = 0; i<nRuns; i++)
     {
         if(h_solution[i]!=-1)
@@ -1200,6 +1205,7 @@ Cut_gpu* createCutsStrongZeroHalf(Cut_gpu *h_cut, int *h_solution, int sizeGroup
                     }
                 }
             }
+            //printf("CUT: ");
             for(j=0;j<h_cut->numberVariables;j++){
                 Coef1_mult[j] = (long double)Coef1[j]/(long double)2;
                 if(Coef1[j]<0){
@@ -1207,10 +1213,13 @@ Cut_gpu* createCutsStrongZeroHalf(Cut_gpu *h_cut, int *h_solution, int sizeGroup
                 }else{
                     Coef1[j] = Coef1[j]/2;
                 }
+                //if(Coef1[j]!=0){
+                //    printf("%d x_%d + ",Coef1[j],j);
+                //}
                 p_frac[j] = Coef1_mult[j] - Coef1[j];
                 lhs += Coef1[j]*h_cut->xAsterisc[j];
             }
-
+            //printf("< %d\n", rhs);
             violation[c_aux] = lhs - (rhs*precision);
 
 //            printf("\n");
