@@ -2795,6 +2795,18 @@ int MipC_cutting_plane( MIPCompact *mipC, Solution *sol, Results *res,  double t
             _time = ( (double) timeLeft - (omp_get_wtime()-startT) );
             newCuts = CutP_separationParallel(cutP, fp2, mipC->par, res,   cr,  cp,  cc, co, cg, cggpur2, cgcpu, mipC->maxTJM, mipC->maxTJ, startT, _time);
 
+            if(newCuts<=0)
+            {
+                do
+                {
+                    printf("Mode Hard!\n");
+                    _time = ( (double) timeLeft - (omp_get_wtime()-startT) );
+                    newCuts = CutP_separationParallel(cutP, fp2, mipC->par, res,  cr,  cp,  cc, co, cg, cggpur2, cgcpu, mipC->maxTJM, mipC->maxTJ, startT, _time);
+                }
+                while(_time>0.0001 && newCuts==0 );
+            }
+
+
             if( newCuts > 0)
             {
                 double optTime = omp_get_wtime();
@@ -2869,12 +2881,7 @@ int MipC_cutting_plane( MIPCompact *mipC, Solution *sol, Results *res,  double t
                 CutP_addCut(cutP,mip,Par_getContinuous(mipC->par),Par_getSlack(mipC->par),Res_getRound(res));
                 if(VERBOSE==3) printf("time adding cuts %f. \n\n",  (omp_get_wtime()-addcuttime));
                 totalTimeRemAdd += omp_get_wtime()-remoaddTime;
-            } /* else {
-
-#ifdef CBC
-                newCuts = lp_strengthen_with_cuts(mip, mipC->par->roundCuts);
-#endif // CBC
-            }*/
+            }
         }
 
 
